@@ -1,5 +1,5 @@
 streamlit
-cvzone-python
+opencv-python
 numpy
 cvzone.HandTrackingModule
 cvzone.ClassificationModule
