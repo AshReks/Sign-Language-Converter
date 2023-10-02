@@ -1,6 +1,5 @@
-import streamlit as st
-import cv2
-import numpy as np
-import math
-from cvzone.HandTrackingModule import HandDetector
-from cvzone.ClassificationModule import Classifier
+streamlit
+cv2
+numpy
+cvzone.HandTrackingModule
+cvzone.ClassificationModule
