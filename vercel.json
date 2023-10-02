@@ -1,0 +1,14 @@
+{
+    "builds": [
+        {
+            "src": "Sign-Language-Converter/app.py",
+            "use": "@vercel/python"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "Sign-Language-Converter/app.py"
+        }
+    ]
+}
