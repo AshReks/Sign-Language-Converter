@@ -1,86 +1,44 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer
 import cv2
 import numpy as np
-from streamlit_webrtc import webrtc_streamer
-import math
-from cvzone.HandTrackingModule import HandDetector
-from cvzone.ClassificationModule import Classifier
 
 def main():
-    st.title("Live Hand Detection and Classification with Streamlit")
+    st.sidebar.title("Hand Detection Options")
+    show_hands = st.sidebar.checkbox("Show Hands", True)
 
-    # Create a HandDetector object
     webrtc_ctx = webrtc_streamer(key="example")
-    cap = cv2.VideoCapture(webrtc_ctx.video_receiver)
-    detector = HandDetector(maxHands=1)
 
-    classifier = Classifier("model/keras_model.h5", "model/labels.txt")
-    labels = ["A", "B", "C"]
+    if webrtc_ctx.video_receiver:
+        while True:
+            _, frame = webrtc_ctx.video_receiver.read()
 
-    offset = 20
-    imgSize = 300
+            if frame is not None:
+                # Convert the frame to grayscale.
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    stframe = st.empty() 
+                # Apply Gaussian blur to reduce noise.
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    while cap.isOpened():
-        ret, img = cap.read()
-        imgOutput = img.copy()
+                # Apply thresholding to create a binary image.
+                _, thresh = cv2.threshold(blurred, 120, 255, cv2.THRESH_BINARY)
 
-        if not ret:
-            st.warning("Unable to capture video.")
-            break
+                # Find contours in the binary image.
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Detect hands in the frame
-        hands, img = detector.findHands(img)
+                # Draw rectangles around detected hands on the original frame.
+                for contour in contours:
+                    area = cv2.contourArea(contour)
+                    if area > 2000:  # Adjust the area threshold as needed.
+                        x, y, w, h = cv2.boundingRect(contour)
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if hands:
-                hand = hands[0]
-                x, y, w, h = hand["bbox"]
-
-                imgWhite = np.ones((imgSize, imgSize, 3), np.uint8) * 255
-                imgCrop = img[y-20: y+h + 20, x-20: x+w+ 20]
-
-                imgCropShape = imgCrop.shape
-
-                aspectRatio = h/w
-                
-                if aspectRatio > 1:
-                    k = imgSize/h 
-                    wcal = math.ceil(k*w)
-
-                    imgResize = cv2.resize(imgCrop, (wcal, imgSize))
-                    imgResizeShape = imgResize.shape
-
-                    wGap = math.ceil((imgSize - wcal)/2)
-
-                    imgWhite[:, wGap:wcal+wGap] = imgResize
-                    prediction, index = classifier.getPrediction(imgWhite, draw=False)
-                    print(prediction, index)
-                
-                else:
-                    k = imgSize/w 
-                    hCal = math.ceil(k*h)
-
-                    imgResize = cv2.resize(imgCrop, (imgSize, hCal))
-                    imgResizeShape = imgResize.shape
-
-                    hGap = math.ceil((imgSize - hCal)/2)
-
-                    imgWhite[hGap:hCal+hGap, :] = imgResize
-
-                    prediction, index = classifier.getPrediction(imgWhite, draw=False)
-                    print(prediction, index)
-
-                cv2.rectangle(imgOutput, (x-offset, y-offset -50), (x-offset + 50, y-offset), (255, 0, 255), cv2.FILLED)
-                cv2.putText(imgOutput, labels[index], (x - offset + 8, y - offset - 5), cv2.FONT_HERSHEY_COMPLEX, 1.7, (255,255,255), 2)
-                
-                cv2.rectangle(imgOutput, (x - offset,y - offset), (x + w + offset, y + h + offset), (255, 0, 255), 4)
-
-        
-        # Display the processed frame in the Streamlit app
-        stframe.image(imgOutput, channels="BGR", use_column_width=True)
-
-    cap.release()
+                # Display the frame with detected hands.
+                if show_hands:
+                    st.image(frame, channels="BGR")
+            else:
+                st.warning("No frame captured.")
+                break
 
 if __name__ == "__main__":
     main()
