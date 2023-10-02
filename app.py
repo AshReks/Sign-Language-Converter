@@ -1,6 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
+from streamlit_webrtc import webrtc_streamer
 import math
 from cvzone.HandTrackingModule import HandDetector
 from cvzone.ClassificationModule import Classifier
@@ -9,7 +10,8 @@ def main():
     st.title("Live Hand Detection and Classification with Streamlit")
 
     # Create a HandDetector object
-    cap = cv2.VideoCapture(1)
+    webrtc_ctx = webrtc_streamer(key="example")
+    cap = cv2.VideoCapture(webrtc_ctx.video_receiver)
     detector = HandDetector(maxHands=1)
 
     classifier = Classifier("model/keras_model.h5", "model/labels.txt")
