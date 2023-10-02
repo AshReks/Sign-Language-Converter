@@ -1,44 +1,88 @@
-import streamlit as st
-from streamlit_webrtc import webrtc_streamer
+from flask import Flask, render_template, Response
+from cvzone.HandTrackingModule import HandDetector
 import cv2
 import numpy as np
+import math
+import time 
+from cvzone.ClassificationModule import Classifier
 
-def main():
-    st.sidebar.title("Hand Detection Options")
-    show_hands = st.sidebar.checkbox("Show Hands", True)
+app = Flask(__name__)
 
-    webrtc_ctx = webrtc_streamer(key="example")
+cap = cv2.VideoCapture(0)
+detector = HandDetector(maxHands=1)
 
-    if webrtc_ctx.video_receiver:
-        while True:
-            _, frame = webrtc_ctx.video_receiver.read()
+classifier = Classifier("model/keras_model.h5", "model/labels.txt")
+labels = ["A", "B", "C"]
 
-            if frame is not None:
-                # Convert the frame to grayscale.
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+offset = 20
+imgSize = 300
 
-                # Apply Gaussian blur to reduce noise.
-                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+def gen_frames():
+    while True:
+        success, img = cap.read()
+        imgOutput = img.copy()
+        hands,img = detector.findHands(img)
+        if not success:
+            break
+        else:
 
-                # Apply thresholding to create a binary image.
-                _, thresh = cv2.threshold(blurred, 120, 255, cv2.THRESH_BINARY)
+            if hands:
+                hand = hands[0]
+                x, y, w, h = hand["bbox"]
 
-                # Find contours in the binary image.
-                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                imgWhite = np.ones((imgSize, imgSize, 3), np.uint8) * 255
+                imgCrop = img[y-20: y+h + 20, x-20: x+w+ 20]
 
-                # Draw rectangles around detected hands on the original frame.
-                for contour in contours:
-                    area = cv2.contourArea(contour)
-                    if area > 2000:  # Adjust the area threshold as needed.
-                        x, y, w, h = cv2.boundingRect(contour)
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                imgCropShape = imgCrop.shape
 
-                # Display the frame with detected hands.
-                if show_hands:
-                    st.image(frame, channels="BGR")
-            else:
-                st.warning("No frame captured.")
-                break
+                aspectRatio = h/w
+                
+                if aspectRatio > 1:
+                    k = imgSize/h 
+                    wcal = math.ceil(k*w)
 
-if __name__ == "__main__":
-    main()
+                    imgResize = cv2.resize(imgCrop, (wcal, imgSize))
+                    imgResizeShape = imgResize.shape
+
+                    wGap = math.ceil((imgSize - wcal)/2)
+
+                    imgWhite[:, wGap:wcal+wGap] = imgResize
+                    prediction, index = classifier.getPrediction(imgWhite, draw=False)
+                    print(prediction, index)
+                
+                else:
+                    k = imgSize/w 
+                    hCal = math.ceil(k*h)
+
+                    imgResize = cv2.resize(imgCrop, (imgSize, hCal))
+                    imgResizeShape = imgResize.shape
+
+                    hGap = math.ceil((imgSize - hCal)/2)
+
+                    imgWhite[hGap:hCal+hGap, :] = imgResize
+
+                    prediction, index = classifier.getPrediction(imgWhite, draw=False)
+                    print(prediction, index)
+
+                cv2.rectangle(imgOutput, (x-offset, y-offset -50), (x-offset + 50, y-offset), (255, 0, 255), cv2.FILLED)
+                cv2.putText(imgOutput, labels[index], (x - offset + 8, y - offset - 5), cv2.FONT_HERSHEY_COMPLEX, 1.7, (255,255,255), 2)
+                
+                cv2.rectangle(imgOutput, (x - offset,y - offset), (x + w + offset, y + h + offset), (255, 0, 255), 4)
+
+
+            ret, buffer = cv2.imencode('.jpg', imgOutput)
+            imgOp = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + imgOp + b'\r\n')
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    app.run(debug=True)
