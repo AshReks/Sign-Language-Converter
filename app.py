@@ -9,7 +9,7 @@ def main():
     st.title("Live Hand Detection and Classification with Streamlit")
 
     # Create a HandDetector object
-    cap = cv2.VideoCapture(-1)
+    cap = cv2.VideoCapture(1)
     detector = HandDetector(maxHands=1)
 
     classifier = Classifier("model/keras_model.h5", "model/labels.txt")
